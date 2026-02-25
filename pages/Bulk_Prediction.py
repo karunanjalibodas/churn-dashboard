@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 import joblib
 
+st.title("Bulk Churn Prediction")
+
 # ---------------- LOAD MODEL ----------------
 model = joblib.load("churn_model.pkl")
-
-st.title("Bulk Prediction")
+model_features = model.get_booster().feature_names
 
 file = st.file_uploader("Upload CSV")
 
@@ -13,41 +14,28 @@ if file:
     df = pd.read_csv(file)
 
     st.subheader("Uploaded Data")
-    st.write(df.head())
+    st.dataframe(df.head())
 
-    # ---------------- REMOVE USELESS COLUMNS ----------------
-    df = df.drop(
-        columns=["RowNumber", "CustomerId", "Surname", "Exited", "Churn", "churn"],
-        errors="ignore"
-    )
+    # ---------------- DROP NON-USEFUL COLS ----------------
+    drop_cols = ["CustomerId", "Surname", "RowNumber"]
+    df = df.drop(columns=[c for c in drop_cols if c in df.columns], errors="ignore")
 
     # ---------------- ENCODE CATEGORICAL ----------------
-    obj_cols = df.select_dtypes(include="object").columns
-    df = pd.get_dummies(df, columns=obj_cols)
+    cat_cols = df.select_dtypes(include="object").columns
+    df = pd.get_dummies(df, columns=cat_cols, drop_first=True)
 
     # ---------------- ALIGN FEATURES ----------------
-    model_features = model.get_booster().feature_names
+    df = df.reindex(columns=model_features, fill_value=0)
 
-    # Add missing columns
-    missing_cols = set(model_features) - set(df.columns)
-    for col in missing_cols:
-        df[col] = 0
+    # ---------------- PREDICTIONS ----------------
+    df["churn_prob"] = model.predict_proba(df)[:, 1]
+    df["prediction"] = model.predict(df)
 
-    # Remove extra columns
-    df = df[model_features]
-
-    # ---------------- PREDICT ----------------
-    prob = model.predict_proba(df)[:, 1]
-    pred = model.predict(df)
-
-    df["churn_prob"] = prob
-    df["prediction"] = pred
-
-    # ---------------- RISK SEGMENT ----------------
+    # ---------------- RISK SEGMENTATION ----------------
     def risk(p):
-        if p > 0.7:
+        if p >= 0.7:
             return "High Risk"
-        elif p > 0.4:
+        elif p >= 0.4:
             return "Medium Risk"
         else:
             return "Low Risk"
@@ -55,22 +43,22 @@ if file:
     df["risk_segment"] = df["churn_prob"].apply(risk)
 
     # ---------------- RETENTION ACTION ----------------
-    def retention(r):
+    def action(r):
         if r == "High Risk":
             return "Offer discount + proactive call"
         elif r == "Medium Risk":
-            return "Send engagement email"
+            return "Send loyalty email"
         else:
-            return "Loyalty rewards"
+            return "No action"
 
-    df["retention_action"] = df["risk_segment"].apply(retention)
+    df["retention_action"] = df["risk_segment"].apply(action)
 
     st.success("Bulk prediction completed")
-    st.write(df.head())
+    st.dataframe(df)
 
-    # ---------------- DOWNLOAD ----------------
     st.download_button(
         "Download Predictions",
         df.to_csv(index=False),
-        "bulk_predictions.csv"
+        "bulk_predictions.csv",
+        "text/csv"
     )
