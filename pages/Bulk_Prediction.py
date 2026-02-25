@@ -15,32 +15,36 @@ if file:
     st.subheader("Uploaded Data")
     st.write(df.head())
 
-    # ---------------- DATA CLEANING ----------------
-    # remove target if present
-    df = df.drop(columns=["Exited", "Churn", "churn"], errors="ignore")
+    # ---------------- REMOVE USELESS COLUMNS ----------------
+    df = df.drop(
+        columns=["RowNumber", "CustomerId", "Surname", "Exited", "Churn", "churn"],
+        errors="ignore"
+    )
 
-    # ---------------- ENCODING ----------------
-    # convert categorical to one hot
+    # ---------------- ENCODE CATEGORICAL ----------------
     obj_cols = df.select_dtypes(include="object").columns
     df = pd.get_dummies(df, columns=obj_cols)
 
-    # ---------------- FEATURE ALIGNMENT ----------------
+    # ---------------- ALIGN FEATURES ----------------
     model_features = model.get_booster().feature_names
 
-    # add missing columns
-    for col in model_features:
-        if col not in df.columns:
-            df[col] = 0
+    # Add missing columns
+    missing_cols = set(model_features) - set(df.columns)
+    for col in missing_cols:
+        df[col] = 0
 
-    # remove extra columns
+    # Remove extra columns
     df = df[model_features]
 
-    # ---------------- PREDICTION ----------------
-    df["churn_prob"] = model.predict_proba(df)[:, 1]
-    df["prediction"] = model.predict(df)
+    # ---------------- PREDICT ----------------
+    prob = model.predict_proba(df)[:, 1]
+    pred = model.predict(df)
 
-    # ---------------- RISK SEGMENTATION ----------------
-    def risk_segment(p):
+    df["churn_prob"] = prob
+    df["prediction"] = pred
+
+    # ---------------- RISK SEGMENT ----------------
+    def risk(p):
         if p > 0.7:
             return "High Risk"
         elif p > 0.4:
@@ -48,10 +52,10 @@ if file:
         else:
             return "Low Risk"
 
-    df["risk_segment"] = df["churn_prob"].apply(risk_segment)
+    df["risk_segment"] = df["churn_prob"].apply(risk)
 
     # ---------------- RETENTION ACTION ----------------
-    def retention_action(r):
+    def retention(r):
         if r == "High Risk":
             return "Offer discount + proactive call"
         elif r == "Medium Risk":
@@ -59,21 +63,14 @@ if file:
         else:
             return "Loyalty rewards"
 
-    df["retention_action"] = df["risk_segment"].apply(retention_action)
+    df["retention_action"] = df["risk_segment"].apply(retention)
 
-    # ---------------- UI OUTPUT ----------------
     st.success("Bulk prediction completed")
-
-    st.subheader("Prediction Results")
     st.write(df.head())
 
     # ---------------- DOWNLOAD ----------------
-    csv = df.to_csv(index=False).encode("utf-8")
-
     st.download_button(
         "Download Predictions",
-        csv,
-        "bulk_predictions.csv",
-        "text/csv",
-        key="download"
+        df.to_csv(index=False),
+        "bulk_predictions.csv"
     )
