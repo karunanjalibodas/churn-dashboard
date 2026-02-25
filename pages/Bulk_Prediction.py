@@ -4,7 +4,7 @@ import joblib
 
 st.title("Bulk Churn Prediction")
 
-# ---------------- LOAD MODEL ----------------
+# ---------- LOAD MODEL ----------
 model = joblib.load("churn_model.pkl")
 model_features = model.get_booster().feature_names
 
@@ -16,22 +16,27 @@ if file:
     st.subheader("Uploaded Data")
     st.dataframe(df.head())
 
-    # ---------------- DROP NON-USEFUL COLS ----------------
-    drop_cols = ["CustomerId", "Surname", "RowNumber"]
+    # ---------- DROP NON MODEL COLUMNS ----------
+    drop_cols = ["RowNumber", "CustomerId", "Surname", "Exited"]
     df = df.drop(columns=[c for c in drop_cols if c in df.columns], errors="ignore")
 
-    # ---------------- ENCODE CATEGORICAL ----------------
+    # ---------- ENCODE CATEGORICAL ----------
     cat_cols = df.select_dtypes(include="object").columns
-    df = pd.get_dummies(df, columns=cat_cols, drop_first=True)
+    df = pd.get_dummies(df, columns=cat_cols)
 
-    # ---------------- ALIGN FEATURES ----------------
-    df = df.reindex(columns=model_features, fill_value=0)
+    # ---------- ADD MISSING MODEL FEATURES ----------
+    for col in model_features:
+        if col not in df.columns:
+            df[col] = 0
 
-    # ---------------- PREDICTIONS ----------------
+    # ---------- REMOVE EXTRA FEATURES ----------
+    df = df[model_features]
+
+    # ---------- PREDICT ----------
     df["churn_prob"] = model.predict_proba(df)[:, 1]
     df["prediction"] = model.predict(df)
 
-    # ---------------- RISK SEGMENTATION ----------------
+    # ---------- RISK SEGMENT ----------
     def risk(p):
         if p >= 0.7:
             return "High Risk"
@@ -42,7 +47,7 @@ if file:
 
     df["risk_segment"] = df["churn_prob"].apply(risk)
 
-    # ---------------- RETENTION ACTION ----------------
+    # ---------- RETENTION ACTION ----------
     def action(r):
         if r == "High Risk":
             return "Offer discount + proactive call"
