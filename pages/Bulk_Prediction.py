@@ -14,19 +14,23 @@ if file is not None:
     st.subheader("Uploaded Data Preview")
     st.write(df.head())
 
-    # Get expected model features
     expected_cols = list(model.feature_names_in_)
 
-    # Add missing columns with 0
+    # Remove unnamed columns
+    df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
+
+    # Add missing columns
     for col in expected_cols:
         if col not in df.columns:
             df[col] = 0
 
-    # Remove extra columns
+    # Keep only required columns
     df = df[expected_cols]
 
-    # Convert everything to numeric (VERY IMPORTANT)
-    df = df.apply(pd.to_numeric, errors='coerce').fillna(0)
+    # Force numeric conversion
+    df = df.apply(pd.to_numeric, errors="coerce").fillna(0)
+
+    st.write("Final columns used for prediction:", df.columns)
 
     preds = model.predict(df)
     probs = model.predict_proba(df)[:, 1]
@@ -34,7 +38,5 @@ if file is not None:
     df["prediction"] = preds
     df["churn_probability"] = probs
 
-    st.subheader("Prediction Results")
+    st.success("Prediction successful!")
     st.write(df.head())
-
-    st.success("Bulk prediction completed successfully!")
