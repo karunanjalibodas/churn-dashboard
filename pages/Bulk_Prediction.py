@@ -4,66 +4,37 @@ import joblib
 
 st.title("Bulk Churn Prediction")
 
-# ---------- LOAD MODEL ----------
 model = joblib.load("churn_model.pkl")
-model_features = model.get_booster().feature_names
 
-file = st.file_uploader("Upload CSV")
+file = st.file_uploader("Upload CSV for Bulk Prediction", type=["csv"])
 
-if file:
+if file is not None:
     df = pd.read_csv(file)
 
-    st.subheader("Uploaded Data")
-    st.dataframe(df.head())
+    st.subheader("Uploaded Data Preview")
+    st.write(df.head())
 
-    # ---------- DROP NON MODEL COLUMNS ----------
-    drop_cols = ["RowNumber", "CustomerId", "Surname", "Exited"]
-    df = df.drop(columns=[c for c in drop_cols if c in df.columns], errors="ignore")
+    # Get expected model features
+    expected_cols = list(model.feature_names_in_)
 
-    # ---------- ENCODE CATEGORICAL ----------
-    cat_cols = df.select_dtypes(include="object").columns
-    df = pd.get_dummies(df, columns=cat_cols)
-
-    # ---------- ADD MISSING MODEL FEATURES ----------
-    for col in model_features:
+    # Add missing columns with 0
+    for col in expected_cols:
         if col not in df.columns:
             df[col] = 0
 
-    # ---------- REMOVE EXTRA FEATURES ----------
-    df = df[model_features]
+    # Remove extra columns
+    df = df[expected_cols]
 
-    # ---------- PREDICT ----------
-    df["churn_prob"] = model.predict_proba(df)[:, 1]
-    df["prediction"] = model.predict(df)
+    # Convert everything to numeric (VERY IMPORTANT)
+    df = df.apply(pd.to_numeric, errors='coerce').fillna(0)
 
-    # ---------- RISK SEGMENT ----------
-    def risk(p):
-        if p >= 0.7:
-            return "High Risk"
-        elif p >= 0.4:
-            return "Medium Risk"
-        else:
-            return "Low Risk"
+    preds = model.predict(df)
+    probs = model.predict_proba(df)[:, 1]
 
-    df["risk_segment"] = df["churn_prob"].apply(risk)
+    df["prediction"] = preds
+    df["churn_probability"] = probs
 
-    # ---------- RETENTION ACTION ----------
-    def action(r):
-        if r == "High Risk":
-            return "Offer discount + proactive call"
-        elif r == "Medium Risk":
-            return "Send loyalty email"
-        else:
-            return "No action"
+    st.subheader("Prediction Results")
+    st.write(df.head())
 
-    df["retention_action"] = df["risk_segment"].apply(action)
-
-    st.success("Bulk prediction completed")
-    st.dataframe(df)
-
-    st.download_button(
-        "Download Predictions",
-        df.to_csv(index=False),
-        "bulk_predictions.csv",
-        "text/csv"
-    )
+    st.success("Bulk prediction completed successfully!")
