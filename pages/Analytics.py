@@ -1,14 +1,12 @@
-import streamlit as st
-import pandas as pd
+import matplotlib.pyplot as plt
 
-st.title("Customer Analytics")
+churn_counts = df["is_churn"].value_counts()
 
-st.write("Upload dataset to visualize churn analytics")
+fig, ax = plt.subplots()
+churn_counts.plot(kind="bar", ax=ax)
 
-file = st.file_uploader("Upload CSV")
+plt.title("Churn Distribution")
+plt.xlabel("Churn (0 = No, 1 = Yes)")
+plt.ylabel("Count")
 
-if file:
-    df = pd.read_csv(file)
-
-    st.write(df.head())
-    st.bar_chart(df.select_dtypes(include='number'))
+st.pyplot(fig)
