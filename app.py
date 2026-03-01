@@ -3,105 +3,161 @@ import pandas as pd
 import joblib
 import plotly.express as px
 
-# -----------------------------
+# ------------------------------------------------
 # PAGE CONFIG
-# -----------------------------
-st.set_page_config(page_title="Retention AI", layout="wide")
+# ------------------------------------------------
+st.set_page_config(
+    page_title="Customer Retention Intelligence Platform",
+    layout="wide"
+)
 
-# -----------------------------
-# CUSTOM CSS (Modern SaaS Look)
-# -----------------------------
-st.markdown("""
-<style>
-body {
-    background-color: #0E1117;
-}
-.block-container {
-    padding-top: 2rem;
-}
-h1 {
-    font-size: 3rem !important;
-}
-.metric-box {
-    background: linear-gradient(135deg, #1f2937, #111827);
-    padding: 20px;
-    border-radius: 15px;
-    text-align: center;
-    color: white;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# -----------------------------
+# ------------------------------------------------
 # HEADER
-# -----------------------------
-st.markdown("""
-# 🚀 RetentionAI  
-### Predict • Analyze • Prevent Customer Churn
-""")
+# ------------------------------------------------
+st.title("Customer Retention Intelligence Platform")
+st.markdown(
+    "<p style='color:gray; font-size:18px;'>AI-powered churn risk monitoring and decision support</p>",
+    unsafe_allow_html=True
+)
 
 st.markdown("---")
 
-# -----------------------------
+# ------------------------------------------------
 # LOAD MODEL
-# -----------------------------
-model = joblib.load("churn_model.pkl")
-
-# -----------------------------
-# LOAD SAMPLE DATA FOR DEMO
-# -----------------------------
+# ------------------------------------------------
 try:
-    df = pd.read_csv("bulk_demo.csv")
-    X = df[model.feature_names_in_]
-    df["risk"] = model.predict_proba(X)[:, 1]
-    df["prediction"] = model.predict(X)
+    model = joblib.load("churn_model.pkl")
 except:
-    df = None
+    st.error("Model file 'churn_model.pkl' not found.")
+    st.stop()
 
-# -----------------------------
-# KPI SECTION
-# -----------------------------
-col1, col2, col3, col4 = st.columns(4)
+# ------------------------------------------------
+# FILE UPLOAD
+# ------------------------------------------------
+uploaded_file = st.file_uploader(
+    "Upload processed customer dataset (CSV)",
+    type=["csv"]
+)
 
-with col1:
-    st.markdown('<div class="metric-box"><h2>Customers</h2><h1>1,000+</h1></div>', unsafe_allow_html=True)
+if uploaded_file is not None:
 
-with col2:
-    st.markdown('<div class="metric-box"><h2>High Risk</h2><h1>142</h1></div>', unsafe_allow_html=True)
+    try:
+        df = pd.read_csv(uploaded_file)
+    except:
+        st.error("Unable to read the uploaded file.")
+        st.stop()
 
-with col3:
-    st.markdown('<div class="metric-box"><h2>Avg Risk</h2><h1>0.38</h1></div>', unsafe_allow_html=True)
+    # ------------------------------------------------
+    # VALIDATE REQUIRED COLUMNS
+    # ------------------------------------------------
+    required_columns = model.feature_names_in_
 
-with col4:
-    st.markdown('<div class="metric-box"><h2>Retention Rate</h2><h1>86%</h1></div>', unsafe_allow_html=True)
+    if not set(required_columns).issubset(df.columns):
+        st.error("Uploaded file does not contain required model features.")
+        st.write("Required columns:", list(required_columns))
+        st.stop()
 
-st.markdown("---")
+    # ------------------------------------------------
+    # PREDICTIONS
+    # ------------------------------------------------
+    X = df[required_columns]
 
-# -----------------------------
-# CHART SECTION
-# -----------------------------
-st.subheader("📊 Churn Risk Distribution")
+    df["churn_probability"] = model.predict_proba(X)[:, 1]
+    df["prediction"] = model.predict(X)
 
-if df is not None:
-    fig = px.histogram(df, x="risk", nbins=20, title="Customer Risk Score Distribution")
-    fig.update_layout(template="plotly_dark")
+    # ------------------------------------------------
+    # SIDEBAR FILTERS
+    # ------------------------------------------------
+    st.sidebar.header("Filters")
+
+    threshold = st.sidebar.slider(
+        "Churn Risk Threshold",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.5,
+        step=0.05
+    )
+
+    filtered_df = df[df["churn_probability"] >= threshold]
+
+    # ------------------------------------------------
+    # KPI SECTION
+    # ------------------------------------------------
+    total_customers = len(df)
+    high_risk = len(filtered_df)
+    avg_risk = round(df["churn_probability"].mean(), 2)
+    retention_rate = round((1 - high_risk / total_customers) * 100, 1)
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("Total Customers", f"{total_customers:,}")
+    col2.metric("High Risk Customers", f"{high_risk:,}")
+    col3.metric("Average Risk Score", avg_risk)
+    col4.metric("Estimated Retention Rate", f"{retention_rate}%")
+
+    st.markdown("---")
+
+    # ------------------------------------------------
+    # EXECUTIVE SUMMARY
+    # ------------------------------------------------
+    st.subheader("Executive Summary")
+
+    st.info(
+        f"""
+        • {high_risk} customers exceed the selected risk threshold of {threshold}.  
+        • Portfolio average churn probability is {avg_risk}.  
+        • Estimated retention rate stands at {retention_rate}%.  
+
+        Recommended Action: Prioritize retention campaigns for high-risk customers to reduce churn exposure.
+        """
+    )
+
+    st.markdown("---")
+
+    # ------------------------------------------------
+    # CHURN DISTRIBUTION CHART
+    # ------------------------------------------------
+    st.subheader("Churn Probability Distribution")
+
+    fig = px.histogram(
+        df,
+        x="churn_probability",
+        nbins=25
+    )
+
+    fig.update_layout(
+        template="simple_white",
+        xaxis_title="Churn Probability",
+        yaxis_title="Number of Customers",
+        font=dict(size=14)
+    )
+
     st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+
+    # ------------------------------------------------
+    # HIGH RISK TABLE
+    # ------------------------------------------------
+    st.subheader("High Risk Customers")
+
+    st.dataframe(
+        filtered_df.sort_values("churn_probability", ascending=False),
+        use_container_width=True
+    )
+
+    # ------------------------------------------------
+    # EXPORT BUTTON
+    # ------------------------------------------------
+    st.download_button(
+        label="Download Risk Report",
+        data=filtered_df.to_csv(index=False),
+        file_name="churn_risk_report.csv",
+        mime="text/csv"
+    )
+
 else:
-    st.info("Upload or create bulk_demo.csv to enable analytics.")
+    st.info("Upload a processed dataset to begin churn risk analysis.")
 
 st.markdown("---")
-
-# -----------------------------
-# HIGH RISK TABLE
-# -----------------------------
-st.subheader("⚠️ High Risk Customers")
-
-if df is not None:
-    high = df.sort_values("risk", ascending=False).head(5)
-    st.dataframe(high)
-else:
-    st.info("No data available")
-
-st.markdown("---")
-
-st.markdown("Built with ❤️ using Streamlit + XGBoost")
+st.caption("Built with Streamlit + XGBoost | Customer Churn Prediction System")
